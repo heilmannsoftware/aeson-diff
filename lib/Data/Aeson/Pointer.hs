@@ -10,13 +10,14 @@ module Data.Aeson.Pointer (
   formatPointer,
   parsePointer,
   -- * Using pointers
+  toAesonKey,
   get,
   pointerFailure,
 ) where
 
 import           Data.Aeson (encode)
 import qualified Data.Aeson.Key (Key)
-import           Data.Aeson.Key (fromText, toText)
+import           Data.Aeson.Key (fromText, fromString, toText)
 import qualified Data.Aeson.KeyMap as HM
 import           Data.Aeson.Types (FromJSON(parseJSON), Parser, Result(Error), ToJSON(toJSON), Value(Array, Object, Number, String), modifyFailure)
 import qualified Data.ByteString.Lazy.Char8 as BS
@@ -34,6 +35,14 @@ data Key
     = OKey Data.Aeson.Key.Key -- ^ Traverse a 'Value' with an 'Object' constructor.
     | AKey Int                -- ^ Traverse a 'Value' with an 'Array' constructor.
   deriving (Eq, Ord, Show, Generic)
+
+-- | Convert a path component to a JSON object key.
+toAesonKey :: Key -> Data.Aeson.Key.Key
+toAesonKey key = case key of
+  OKey x -> x
+  -- According to https://datatracker.ietf.org/doc/html/rfc6901#section-4
+  -- strings containing numbers are valid to reference in an object.
+  AKey x -> fromString $ show x
 
 instance ToJSON Key where
     toJSON (OKey t) = toJSON t
@@ -131,8 +140,8 @@ get :: Pointer -> Value -> Result Value
 get (Pointer []) v = return v
 get (Pointer (AKey i : path)) (Array v) =
   maybe (fail "") return (v V.!? i) >>= get (Pointer path)
-get (Pointer (OKey n : path)) (Object v) =
-  maybe (fail "") return (HM.lookup n v) >>= get (Pointer path)
+get (Pointer (key : path)) (Object v) =
+  maybe (fail "") return (HM.lookup (toAesonKey key) v) >>= get (Pointer path)
 get pointer value = pointerFailure pointer value
 
 -- | Report an error while following a pointer.
