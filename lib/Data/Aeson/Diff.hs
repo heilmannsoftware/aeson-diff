@@ -34,7 +34,7 @@ import qualified Data.Vector                as V
 import           Data.Vector.Distance       (Params(Params, equivalent, positionOffset, substitute, insert, delete, cost), leastChanges)
 
 import Data.Aeson.Patch                     (Operation(Add, Cpy, Mov, Rem, Rep, Tst), Patch(Patch), changePointer, changeValue, modifyPointer)
-import Data.Aeson.Pointer                   (Key(AKey, OKey), Pointer(Pointer), formatPointer, get, pointerFailure, pointerPath)
+import Data.Aeson.Pointer                   (Key(AKey, OKey), Pointer(Pointer), formatPointer, get, pointerFailure, pointerPath, toAesonKey)
 
 -- * Configuration
 
@@ -243,10 +243,11 @@ applyAdd pointer = go pointer
             fn Nothing  = cannot "insert" "array" i pointer
             fn (Just d) = Just <$> go (Pointer path) v' d
         in Array <$> vModify i fn v
-    go (Pointer [OKey n]) v' (Object m) =
-        return . Object $ HM.insert n v' m
-    go (Pointer (OKey n : path)) v' (Object o) =
-        let fn :: Maybe Value -> Result (Maybe Value)
+    go (Pointer [key]) v' (Object m) =
+        return . Object $ HM.insert (toAesonKey key) v' m
+    go (Pointer (key : path)) v' (Object o) =
+        let n = toAesonKey key
+            fn :: Maybe Value -> Result (Maybe Value)
             fn Nothing  = cannot "insert" "object" n pointer
             fn (Just d) = Just <$> go (Pointer path) v' d
         in Object <$> hmModify n fn o
@@ -273,13 +274,15 @@ applyRem from@(Pointer path) = go path
             fn Nothing  = cannot "traverse" "array" i from
             fn (Just o) = Just <$> go path o
         in Array <$> vModify i fn v
-    go [OKey n] (Object m) =
-        let fn :: Maybe Value -> Result (Maybe Value)
+    go [key] (Object m) =
+        let n = toAesonKey key
+            fn :: Maybe Value -> Result (Maybe Value)
             fn Nothing  = cannot "delete" "object" n from
             fn (Just _) = return Nothing
         in Object <$> hmModify n fn m
-    go (OKey n : path) (Object m) =
-        let fn :: Maybe Value -> Result (Maybe Value)
+    go (key : path) (Object m) =
+        let n = toAesonKey key
+            fn :: Maybe Value -> Result (Maybe Value)
             fn Nothing  = cannot "traverse" "object" n from
             fn (Just o) = Just <$> go path o
         in Object <$> hmModify n fn m
